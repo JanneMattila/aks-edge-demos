@@ -2,7 +2,7 @@
 set -a
 
 # All the variables for the deployment
-subscription_name="AzureDev"
+subscription_name="development"
 resource_group_name="rg-azure-iot-edge"
 location="northeurope"
 workspace_name="log-iot"
