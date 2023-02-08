@@ -118,14 +118,11 @@ vm_json=$(az vm create \
 
 az vm run-command invoke -g $resource_group_name -n $vm_name \
   --command-id RunPowerShellScript \
-  --scripts "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0"
-
-az vm run-command invoke -g $resource_group_name -n $vm_name \
-  --command-id RunPowerShellScript \
-  --scripts "Start-Service sshd"
+  --scripts "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0;Start-Service sshd;Set-Service -Name sshd -StartupType 'Automatic'"
 
 vm_public_ip_address=$(echo $vm_json | jq -r .publicIpAddress)
 echo $vm_public_ip_address
+echo "vm_public_ip_address=$vm_public_ip_address" > .env
 
 # Display variables
 echo vm_username=$vm_username
@@ -143,17 +140,42 @@ powershell.exe
 mkdir \code
 cd \code
 
+# Install AKS Edge Essentials
+# iwr -o aks-ee.msi https://aka.ms/aks-edge/k8s-msi
+iwr -o aks-ee.msi https://aka.ms/aks-edge/k3s-msi
+msiexec.exe /i aks-ee.msi
+
+Get-Command -Module AKSEdge | Format-Table Name, Version
+
+Install-AksEdgeHostFeatures
+
+$aksEdgeConfig = New-AksEdgeConfig -DeploymentType SingleMachineCluster
+$aksEdgeConfig.User.AcceptEula = $true
+$aksEdgeConfig.User.AcceptOptionalTelemetry = $true
+$aksEdgeConfig.Init.ServiceIpRangeSize = 10
+$machine = $aksEdgeConfig.Machines[0]
+$machine.LinuxNode.CpuCount = 4
+$machine.LinuxNode.MemoryInMB = 4096
+$aksEdgeConfig
+$aksEdgeConfig | ConvertTo-Json -Depth 4 > aks-ee.json
+cat aks-ee.json
+New-AksEdgeDeployment -JsonConfigFilePath aks-ee.json
+
+# Connect-AksEdgeArc
+
 iwr -o aks-edge.zip https://github.com/Azure/AKS-Edge/archive/refs/heads/main.zip
-dir
 Expand-Archive aks-edge.zip -DestinationPath C:\code\edge
-cd edge\AKS-Edge-main\tools
+cd \code\edge\AKS-Edge-main\tools
 dir
 
 .\AksEdgeShell.ps1
 Get-Module
-Get-Command -Name AksEdgeDeploy | Format-Table Name, Version
+Get-Command -Module AksEdgeDeploy | Format-Table Name, Version
+dir
+cd scripts
+cat aksedge-config.json
 
-# Exit VM
+# Exit PowerShell and then SSH session
 exit
 
 # Wipe out the resources
