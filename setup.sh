@@ -141,8 +141,8 @@ mkdir \code
 cd \code
 
 # Install AKS Edge Essentials
-# iwr -o aks-ee.msi https://aka.ms/aks-edge/k8s-msi
-iwr -o aks-ee.msi https://aka.ms/aks-edge/k3s-msi
+# Invoke-WebRequest -Uri https://aka.ms/aks-edge/k8s-msi -OutFile aks-ee.msi
+Invoke-WebRequest -Uri https://aka.ms/aks-edge/k3s-msi -OutFile aks-ee.msi
 msiexec.exe /i aks-ee.msi
 
 Get-Command -Module AKSEdge | Format-Table Name, Version
@@ -161,9 +161,25 @@ $aksEdgeConfig | ConvertTo-Json -Depth 4 > aks-ee.json
 cat aks-ee.json
 New-AksEdgeDeployment -JsonConfigFilePath aks-ee.json
 
-# Connect-AksEdgeArc
+kubectl get nodes
 
-iwr -o aks-edge.zip https://github.com/Azure/AKS-Edge/archive/refs/heads/main.zip
+# Connect to Arc
+# https://learn.microsoft.com/en-us/azure/aks/hybrid/aks-edge-howto-connect-to-arc
+Install-Module Az.Resources -Repository PSGallery -Force -AllowClobber -ErrorAction Stop  
+Install-Module Az.Accounts -Repository PSGallery -Force -AllowClobber -ErrorAction Stop 
+Install-Module Az.ConnectedKubernetes -Repository PSGallery -Force -AllowClobber -ErrorAction Stop
+
+# Install Helm
+Invoke-WebRequest -Uri "https://get.helm.sh/helm-v3.6.3-windows-amd64.zip" -OutFile helm.zip
+Expand-Archive helm.zip C:\code\helm
+$env:Path = "C:\code\helm\windows-amd64;$env:Path"
+[Environment]::SetEnvironmentVariable("Path", $env:Path)
+helm version
+
+# Connect-AksEdgeArc -JsonConfigFilePath .\aksedge-config.json
+
+# Install AKS Edge Deploy
+Invoke-WebRequest -Uri https://github.com/Azure/AKS-Edge/archive/refs/heads/main.zip -OutFile aks-edge.zip
 Expand-Archive aks-edge.zip -DestinationPath C:\code\edge
 cd \code\edge\AKS-Edge-main\tools
 dir
