@@ -1,5 +1,5 @@
 # Use C:\code for our installation folder
-mkdir \code
+mkdir \code -Force
 Set-Location \code
 
 # Install AKS Edge Deploy
@@ -62,6 +62,10 @@ $aksEdgeConfig = ConvertTo-Json @{
     }
     "AksEdgeConfigFile" = "$aksEdgeJson"
 }
+
+$aksEdge = cat $aksEdgeJson | ConvertFrom-Json
+$aksEdge.Init.ServiceIPRangeSize = 10
+$aksEdge | ConvertTo-Json -Depth 5  > $aksEdgeJson
 
 $aksEdgeConfig
 $aksEdgeConfig > $aideJson
