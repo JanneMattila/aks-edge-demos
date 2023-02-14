@@ -34,10 +34,12 @@ nsg_rule_deny_name="deny-rule"
 # az extension add --upgrade --yes --name azure-iot
 az extension add --upgrade --yes --name connectedk8s
 az extension add --upgrade --yes --name k8s-extension
+az extension add --upgrade --yes --name k8s-configuration
 az extension add --upgrade --yes --name customlocation
 az provider register --namespace Microsoft.Kubernetes
 az provider register --namespace Microsoft.KubernetesConfiguration
 az provider register --namespace Microsoft.ExtendedLocation
+az provider register --namespace Microsoft.ContainerService
 
 # Login and set correct context
 az login -o table
@@ -47,8 +49,10 @@ az account set --subscription $subscription_name -o table
 az group create -l $location -n $resource_group_name -o table
 
 workspace_json=$(az monitor log-analytics workspace create -g $resource_group_name -n $workspace_name -o json)
+workspace_resource_id=$(echo $workspace_json | jq -r .id)
 workspace_id=$(echo $workspace_json | jq -r .customerId)
 workspace_key=$(az monitor log-analytics workspace get-shared-keys --resource-group $resource_group_name --workspace-name $workspace_name --query primarySharedKey -o tsv)
+echo $workspace_resource_id
 echo $workspace_json
 echo $workspace_id
 echo $workspace_key
@@ -164,6 +168,28 @@ sshpass -p $vm_password ssh $vm_username@$vm_public_ip_address
 
 powershell.exe
 # Continue commands in "windows-setup.ps1"
+
+# Enable monitoring
+cluster_name="aksee"
+
+az k8s-extension create --name azuremonitor-containers \
+  --cluster-name $cluster_name \
+  --resource-group $resource_group_name \
+  --cluster-type connectedClusters \
+  --extension-type Microsoft.AzureMonitor.Containers \
+  --configuration-settings amalogs.useAADAuth=true \
+  --configuration-settings logAnalyticsWorkspaceResourceID=$workspace_resource_id
+
+# Enable GitOps
+az k8s-configuration flux create -g $resource_group_name \
+-c $cluster_name \
+-n cluster-config \
+--namespace cluster-config \
+-t connectedClusters \
+--scope cluster \
+-u https://github.com/JanneMattila/aks-ee-gitops \
+--branch main  \
+--kustomization name=cluster path=./ prune=true
 
 # Wipe out the resources
 az group delete --name $resource_group_name -y

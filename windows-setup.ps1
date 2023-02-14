@@ -1,12 +1,3 @@
-# If you are running this in Azure VM, then you need to disable WindowsAzureGuestAgent
-# before you can enable Arc for Servers
-# https://learn.microsoft.com/en-us/azure/azure-arc/servers/plan-evaluate-on-azure-virtual-machine
-# Azure VM->
-Set-Service WindowsAzureGuestAgent -StartupType Disabled -Verbose
-Stop-Service WindowsAzureGuestAgent -Force -Verbose
-New-NetFirewallRule -Name BlockAzureIMDS -DisplayName "Block access to Azure IMDS" -Enabled True -Profile Any -Direction Outbound -Action Block -RemoteAddress 169.254.169.254
-# <-Azure VM
-
 # Use C:\code for our installation folder
 mkdir \code
 Set-Location \code
@@ -88,12 +79,36 @@ kubectl get nodes
 Get-AideUserConfig
 Test-AideUserConfig
 
-# Installs Azure CLI 
+# Installs Azure CLI
 Initialize-AideArc
+
+# If using Azure VM, then current check prevents installing of agent automatically
+# Azure VM->
+Invoke-WebRequest -UseBasicParsing -Uri "https://aka.ms/azcmagent-windows" -TimeoutSec 30 -OutFile "$env:TEMP\install_windows_azcmagent.ps1";
+& "$env:TEMP\install_windows_azcmagent.ps1";
+# <-Azure VM
 
 Connect-AideArc
 
 Get-AksEdgeManagedServiceToken
+
+# Test GitOps deployed apps
+kubectl get deploy -n demos
+
+$network_app_svc_ip = $(kubectl get service webapp-network-tester-demo -n demos -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
+$network_app_svc_ip
+
+Invoke-WebRequest -UseBasicParsing -Uri http://$network_app_svc_ip
+
+Invoke-RestMethod `
+    -Body "HTTP GET https://bing.com" `
+    -Method "POST" `
+    -Uri http://$network_app_svc_ip/api/commands
+
+Invoke-RestMethod `
+    -Body "HTTP GET http://k8s-probe-demo" `
+    -Method "POST" `
+    -Uri http://$network_app_svc_ip/api/commands
 
 # Exit PowerShell and then SSH session
 exit
