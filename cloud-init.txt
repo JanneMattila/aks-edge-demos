@@ -9,10 +9,13 @@ packages:
 write_files:
   - path: /etc/squid/squid.conf
     content: |
-      auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/htpasswd
-      auth_param basic realm proxy
-      acl authenticated proxy_auth REQUIRED
-      http_access allow authenticated
+      # Require authentication:
+      # auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/htpasswd
+      # auth_param basic realm proxy
+      # acl authenticated proxy_auth REQUIRED
+      # http_access allow authenticated
+      # Proxy without authentication:
+      http_access allow all
       http_port 0.0.0.0:3128
 runcmd:
   - htpasswd -b -c /etc/squid/htpasswd proxyuser proxypassword

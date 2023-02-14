@@ -1,3 +1,34 @@
+# Test proxy
+
+$proxyIp = "10.4.0.5"
+$proxy = "http://$($proxyIp):3128"
+
+# Should timeout
+Invoke-WebRequest -UseBasicParsing -Uri https://bing.com
+Invoke-WebRequest -UseBasicParsing -Uri https://echo.jannemattila.com/pages/echo
+
+# Should work (no auth)
+Invoke-WebRequest -UseBasicParsing -Uri https://bing.com -Proxy $proxy
+Invoke-WebRequest -UseBasicParsing -Uri https://echo.jannemattila.com/pages/echo -Proxy $proxy
+
+# Should work (if using auth in proxy)
+$proxyPassword = ConvertTo-SecureString "proxypassword" -AsPlainText -Force
+$proxyCredentials = New-Object System.Management.Automation.PSCredential -ArgumentList "proxyuser", $proxyPassword
+Invoke-WebRequest -UseBasicParsing -Uri https://bing.com -Proxy $proxy -ProxyCredential $proxyCredentials
+Invoke-WebRequest -UseBasicParsing -Uri https://echo.jannemattila.com/pages/echo -Proxy $proxy -ProxyCredential $proxyCredentials
+
+# Set to registry
+$registryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+Set-ItemProperty -Path $registryPath ProxyEnable -Value 1
+Set-ItemProperty -Path $registryPath ProxyServer -Value $proxy
+
+# Proxy test commands:
+# netsh winhttp show proxy
+# netsh winhttp import proxy source=ie
+# 
+# [system.net.webrequest]::DefaultWebProxy.Credentials = $proxyCredentials
+[system.net.webrequest]::DefaultWebProxy = new-object system.net.webproxy($proxy)
+
 # Use C:\code for our installation folder
 mkdir \code -Force
 Set-Location \code
@@ -65,6 +96,8 @@ $aksEdgeConfig = ConvertTo-Json @{
 
 $aksEdge = cat $aksEdgeJson | ConvertFrom-Json
 $aksEdge.Init.ServiceIPRangeSize = 10
+$aksEdge.Network.Proxy.Http = $proxy
+$aksEdge.Network.Proxy.Https = $proxy
 $aksEdge | ConvertTo-Json -Depth 5  > $aksEdgeJson
 
 $aksEdgeConfig

@@ -132,8 +132,11 @@ az vm run-command invoke -g $resource_group_name -n $vm_name \
   --scripts "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0;Start-Service sshd;Set-Service -Name sshd -StartupType 'Automatic'"
 
 vm_public_ip_address=$(echo $vm_json | jq -r .publicIpAddress)
+vm_private_ip_address=$(echo $vm_json | jq -r .privateIpAddress)
 echo $vm_public_ip_address
+echo $vm_private_ip_address
 echo "vm_public_ip_address=$vm_public_ip_address" >> .env
+echo "vm_private_ip_address=$vm_private_ip_address" >> .env
 
 # Display variables
 echo vm_username=$vm_username
@@ -156,15 +159,20 @@ proxy_vm_json=$(az vm create \
   -o json)
 
 proxy_vm_public_ip_address=$(echo $proxy_vm_json | jq -r .publicIpAddress)
+proxy_vm_private_ip_address=$(echo $proxy_vm_json | jq -r .privateIpAddress)
 echo $proxy_vm_public_ip_address
+echo $proxy_vm_private_ip_address
 echo "proxy_vm_public_ip_address=$proxy_vm_public_ip_address" >> .env
-
-az ssh vm -g $resource_group_name -n $vm_name --local-user $vm_username
+echo "proxy_vm_private_ip_address=$proxy_vm_private_ip_address" >> .env
 
 ssh $vm_username@$vm_public_ip_address
 
+ssh $vm_username@$proxy_vm_public_ip_address
+
 # Or using sshpass
 sshpass -p $vm_password ssh $vm_username@$vm_public_ip_address
+
+sshpass -p $vm_password ssh $vm_username@$proxy_vm_public_ip_address
 
 powershell.exe
 # Continue commands in "windows-setup.ps1"
@@ -190,6 +198,35 @@ az k8s-configuration flux create -g $resource_group_name \
 -u https://github.com/JanneMattila/aks-ee-gitops \
 --branch main  \
 --kustomization name=cluster path=./ prune=true
+
+##############################                    
+#  ____
+# |  _ \ _ __ _____  ___   _
+# | |_) | '__/ _ \ \/ / | | |
+# |  __/| | | (_) >  <| |_| |
+# |_|   |_|  \___/_/\_\\__, |
+#                      |___/
+##############################
+
+# Disconnect solution
+az network nsg rule create \
+  --resource-group $resource_group_name \
+  --nsg-name $nsg_name \
+  --name $nsg_rule_deny_name \
+  --protocol '*' \
+  --direction outbound \
+  --source-address-prefix $vm_private_ip_address/32 \
+  --source-port-range '*' \
+  --destination-address-prefix 'Internet' \
+  --destination-port-range '*' \
+  --access deny \
+  --priority 200
+
+# Remove network security rule -> Resolve the connection
+az network nsg rule delete \
+  --resource-group $resource_group_name \
+  --nsg-name $nsg_name \
+  --name $nsg_rule_deny_name
 
 # Wipe out the resources
 az group delete --name $resource_group_name -y
