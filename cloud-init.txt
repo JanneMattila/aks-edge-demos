@@ -1,0 +1,24 @@
+#cloud-config
+
+# Configuration originally from:
+# https://gist.github.com/Praseetha-KR/3920ad51c75b8d8a5951122a2cb5e697
+package_update: true
+packages:
+  - squid
+  - apache2-utils
+write_files:
+  - path: /etc/squid/squid.conf
+    content: |
+      auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/htpasswd
+      auth_param basic realm proxy
+      acl authenticated proxy_auth REQUIRED
+      http_access allow authenticated
+      http_port 0.0.0.0:3128
+runcmd:
+  - htpasswd -b -c /etc/squid/htpasswd proxyuser proxypassword
+  - systemctl enable squid
+  - systemctl restart squid
+  - ufw enable
+  - ufw allow ssh
+  - ufw allow 'Squid'
+  

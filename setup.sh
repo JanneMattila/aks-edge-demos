@@ -13,13 +13,15 @@ subnet_vm_name="snet-vm"
 vm_name="vm"
 vm_username="azureuser"
 
+proxy_vm_name="proxy"
+
 if test -f ".env"; then
   # Password has been created so load it
   source .env
 else
   # Generate password and store it
   vm_password=$(openssl rand -base64 32)
-  echo "vm_password=$vm_password" > .env
+  echo "vm_password=$vm_password" >> .env
 fi
 
 nsg_name="nsg-vm"
@@ -30,6 +32,12 @@ nsg_rule_deny_name="deny-rule"
 
 # Prepare extensions and providers
 # az extension add --upgrade --yes --name azure-iot
+az extension add --upgrade --yes --name connectedk8s
+az extension add --upgrade --yes --name k8s-extension
+az extension add --upgrade --yes --name customlocation
+az provider register --namespace Microsoft.Kubernetes
+az provider register --namespace Microsoft.KubernetesConfiguration
+az provider register --namespace Microsoft.ExtendedLocation
 
 # Login and set correct context
 az login -o table
@@ -109,7 +117,6 @@ vm_json=$(az vm create \
   --size Standard_D8ds_v4 \
   --admin-username $vm_username \
   --admin-password $vm_password \
-  --custom-data cloud-init-updated.txt \
   --subnet $subnet_vm_id \
   --accelerated-networking true \
   --nsg "" \
@@ -122,12 +129,31 @@ az vm run-command invoke -g $resource_group_name -n $vm_name \
 
 vm_public_ip_address=$(echo $vm_json | jq -r .publicIpAddress)
 echo $vm_public_ip_address
-echo "vm_public_ip_address=$vm_public_ip_address" > .env
+echo "vm_public_ip_address=$vm_public_ip_address" >> .env
 
 # Display variables
 echo vm_username=$vm_username
 echo vm_password=$vm_password
 echo vm_public_ip_address=$vm_public_ip_address
+
+# For pxoxy server
+proxy_vm_json=$(az vm create \
+  --resource-group $resource_group_name  \
+  --name $proxy_vm_name \
+  --image "Canonical:0001-com-ubuntu-server-focal:20_04-lts:latest" \
+  --size Standard_DS1_v2 \
+  --admin-username $vm_username \
+  --admin-password $vm_password \
+  --custom-data cloud-init.txt \
+  --subnet $subnet_vm_id \
+  --accelerated-networking true \
+  --nsg "" \
+  --public-ip-sku Standard \
+  -o json)
+
+proxy_vm_public_ip_address=$(echo $proxy_vm_json | jq -r .publicIpAddress)
+echo $proxy_vm_public_ip_address
+echo "proxy_vm_public_ip_address=$proxy_vm_public_ip_address" >> .env
 
 az ssh vm -g $resource_group_name -n $vm_name --local-user $vm_username
 
@@ -137,62 +163,7 @@ ssh $vm_username@$vm_public_ip_address
 sshpass -p $vm_password ssh $vm_username@$vm_public_ip_address
 
 powershell.exe
-mkdir \code
-cd \code
-
-# Install AKS Edge Essentials
-# Invoke-WebRequest -Uri https://aka.ms/aks-edge/k8s-msi -OutFile aks-ee.msi
-Invoke-WebRequest -Uri https://aka.ms/aks-edge/k3s-msi -OutFile aks-ee.msi
-msiexec.exe /i aks-ee.msi
-
-Get-Command -Module AKSEdge | Format-Table Name, Version
-
-Install-AksEdgeHostFeatures
-
-$aksEdgeConfig = New-AksEdgeConfig -DeploymentType SingleMachineCluster
-$aksEdgeConfig.User.AcceptEula = $true
-$aksEdgeConfig.User.AcceptOptionalTelemetry = $true
-$aksEdgeConfig.Init.ServiceIpRangeSize = 10
-$machine = $aksEdgeConfig.Machines[0]
-$machine.LinuxNode.CpuCount = 4
-$machine.LinuxNode.MemoryInMB = 4096
-$aksEdgeConfig
-$aksEdgeConfig | ConvertTo-Json -Depth 4 > aks-ee.json
-cat aks-ee.json
-New-AksEdgeDeployment -JsonConfigFilePath aks-ee.json
-
-kubectl get nodes
-
-# Connect to Arc
-# https://learn.microsoft.com/en-us/azure/aks/hybrid/aks-edge-howto-connect-to-arc
-Install-Module Az.Resources -Repository PSGallery -Force -AllowClobber -ErrorAction Stop  
-Install-Module Az.Accounts -Repository PSGallery -Force -AllowClobber -ErrorAction Stop 
-Install-Module Az.ConnectedKubernetes -Repository PSGallery -Force -AllowClobber -ErrorAction Stop
-
-# Install Helm
-Invoke-WebRequest -Uri "https://get.helm.sh/helm-v3.6.3-windows-amd64.zip" -OutFile helm.zip
-Expand-Archive helm.zip C:\code\helm
-$env:Path = "C:\code\helm\windows-amd64;$env:Path"
-[Environment]::SetEnvironmentVariable("Path", $env:Path)
-helm version
-
-# Connect-AksEdgeArc -JsonConfigFilePath .\aksedge-config.json
-
-# Install AKS Edge Deploy
-Invoke-WebRequest -Uri https://github.com/Azure/AKS-Edge/archive/refs/heads/main.zip -OutFile aks-edge.zip
-Expand-Archive aks-edge.zip -DestinationPath C:\code\edge
-cd \code\edge\AKS-Edge-main\tools
-dir
-
-.\AksEdgeShell.ps1
-Get-Module
-Get-Command -Module AksEdgeDeploy | Format-Table Name, Version
-dir
-cd scripts
-cat aksedge-config.json
-
-# Exit PowerShell and then SSH session
-exit
+# Continue commands in "windows-setup.ps1"
 
 # Wipe out the resources
 az group delete --name $resource_group_name -y
