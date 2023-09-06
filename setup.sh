@@ -143,36 +143,10 @@ echo vm_username=$vm_username
 echo vm_password=$vm_password
 echo vm_public_ip_address=$vm_public_ip_address
 
-# For pxoxy server
-proxy_vm_json=$(az vm create \
-  --resource-group $resource_group_name  \
-  --name $proxy_vm_name \
-  --image "Canonical:0001-com-ubuntu-server-focal:20_04-lts:latest" \
-  --size Standard_DS1_v2 \
-  --admin-username $vm_username \
-  --admin-password $vm_password \
-  --custom-data cloud-init.txt \
-  --subnet $subnet_vm_id \
-  --accelerated-networking true \
-  --nsg "" \
-  --public-ip-sku Standard \
-  -o json)
-
-proxy_vm_public_ip_address=$(echo $proxy_vm_json | jq -r .publicIpAddress)
-proxy_vm_private_ip_address=$(echo $proxy_vm_json | jq -r .privateIpAddress)
-echo $proxy_vm_public_ip_address
-echo $proxy_vm_private_ip_address
-echo "proxy_vm_public_ip_address=$proxy_vm_public_ip_address" >> .env
-echo "proxy_vm_private_ip_address=$proxy_vm_private_ip_address" >> .env
-
 ssh $vm_username@$vm_public_ip_address
-
-ssh $vm_username@$proxy_vm_public_ip_address
 
 # Or using sshpass
 sshpass -p $vm_password ssh $vm_username@$vm_public_ip_address
-
-sshpass -p $vm_password ssh $vm_username@$proxy_vm_public_ip_address
 
 powershell.exe
 # Continue commands in "windows-setup.ps1"
@@ -207,6 +181,32 @@ az k8s-configuration flux create -g $resource_group_name \
 # |_|   |_|  \___/_/\_\\__, |
 #                      |___/
 ##############################
+
+# For pxoxy server
+proxy_vm_json=$(az vm create \
+  --resource-group $resource_group_name  \
+  --name $proxy_vm_name \
+  --image "Canonical:0001-com-ubuntu-server-focal:20_04-lts:latest" \
+  --size Standard_DS1_v2 \
+  --admin-username $vm_username \
+  --admin-password $vm_password \
+  --custom-data cloud-init.txt \
+  --subnet $subnet_vm_id \
+  --accelerated-networking true \
+  --nsg "" \
+  --public-ip-sku Standard \
+  -o json)
+
+proxy_vm_public_ip_address=$(echo $proxy_vm_json | jq -r .publicIpAddress)
+proxy_vm_private_ip_address=$(echo $proxy_vm_json | jq -r .privateIpAddress)
+echo $proxy_vm_public_ip_address
+echo $proxy_vm_private_ip_address
+echo "proxy_vm_public_ip_address=$proxy_vm_public_ip_address" >> .env
+echo "proxy_vm_private_ip_address=$proxy_vm_private_ip_address" >> .env
+
+ssh $vm_username@$proxy_vm_public_ip_address
+
+sshpass -p $vm_password ssh $vm_username@$proxy_vm_public_ip_address
 
 # Disconnect solution
 az network nsg rule create \

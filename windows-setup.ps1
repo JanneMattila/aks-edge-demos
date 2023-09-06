@@ -17,24 +17,41 @@ $proxyCredentials = New-Object System.Management.Automation.PSCredential -Argume
 Invoke-WebRequest -UseBasicParsing -Uri https://bing.com -Proxy $proxy -ProxyCredential $proxyCredentials
 Invoke-WebRequest -UseBasicParsing -Uri https://echo.jannemattila.com/pages/echo -Proxy $proxy -ProxyCredential $proxyCredentials
 
-# Set to registry
+# Set proxy
 $registryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+Set-ItemProperty -Path $registryPath ProxyEnable -Value 0
 Set-ItemProperty -Path $registryPath ProxyEnable -Value 1
 Set-ItemProperty -Path $registryPath ProxyServer -Value $proxy
+Set-ItemProperty -Path $registryPath ProxyServer -Value ""
+Get-ItemProperty -Path $registryPath ProxyServer
 
-# Proxy test commands:
-# netsh winhttp show proxy
-# netsh winhttp import proxy source=ie
-# 
 # [system.net.webrequest]::DefaultWebProxy.Credentials = $proxyCredentials
-[system.net.webrequest]::DefaultWebProxy = new-object system.net.webproxy($proxy)
+# [system.net.webrequest]::DefaultWebProxy = new-object system.net.webproxy($proxy)
+
+netsh winhttp reset proxy
+netsh winhttp set proxy proxy-server=$proxy bypass-list="localhost"
+netsh winhttp show proxy
+# netsh winhttp import proxy source=ie
+
+[Environment]::SetEnvironmentVariable("HTTP_PROXY", $proxy, "Machine")
+[Environment]::SetEnvironmentVariable("HTTP_PROXY", $proxy, "Process")
+[Environment]::SetEnvironmentVariable("HTTPS_PROXY", $proxy, "Machine")
+[Environment]::SetEnvironmentVariable("HTTPS_PROXY", $proxy, "Process")
+$env:HTTP_PROXY = $proxy
+$env:HTTPS_PROXY = $proxy
+
+$env:HTTP_PROXY
+$env:HTTPS_PROXY
+
+# Run Windows Update
+wuauclt.exe /updatenow
 
 # Use C:\code for our installation folder
 mkdir \code -Force
 Set-Location \code
 
 # Install AKS Edge Deploy
-Invoke-WebRequest -Uri "https://github.com/Azure/AKS-Edge/archive/main.zip" -OutFile aks-edge.zip
+Invoke-WebRequest -Uri "https://github.com/Azure/AKS-Edge/archive/refs/tags/1.3.186.0.zip" -OutFile aks-edge.zip
 Expand-Archive aks-edge.zip -DestinationPath C:\code\edge -Force
 
 $aideJson = (Get-ChildItem -Path "edge" -Filter aide-userconfig.json -Recurse).FullName
@@ -62,13 +79,21 @@ $cluster_name = "aksee"
 # - Azure Connected Machine Onboarding
 # - Kubernetes Cluster - Azure Arc Onboarding
 
-$product = "AKS Edge Essentials - K3s (Public Preview)"
+$product = "AKS Edge Essentials - K8s"
 
-$aksEdgeConfig = ConvertTo-Json @{
+$aksEdgeConfig = @{
     "SchemaVersion"     = "1.1"
     "Version"           = "1.0"
     "AksEdgeProduct"    = $product
     "AksEdgeProductUrl" = ""
+    "InstallOptions" = @{
+        "InstallPath" = ""
+        "VhdxPath" = ""
+    }
+    "VSwitch"= @{
+        "Name" = ""
+        "AdapterName" = ""
+    }
     "Azure"             = @{
         "ClusterName"          = $cluster_name
         "SubscriptionName"     = $subscription_name
@@ -91,21 +116,71 @@ $aksEdgeConfig = ConvertTo-Json @{
         "ServiceIpRangeSize"      = 10
         "AcceptOptionalTelemetry" = $true
     }
-    "AksEdgeConfigFile" = "$aksEdgeJson"
+    "AksEdgeConfigFile" =  "aksedge-config.json"
+    "AksEdgeConfig"     = @{
+        "SchemaVersion"  = "1.8"
+        "Version"        = "1.0"
+        "DeploymentType" = "SingleMachineCluster"
+        "Init"           = @{
+            "ServiceIPRangeSize" = 10
+        }
+        "Arc"            = @{
+            "ClusterName"          = $cluster_name
+            "SubscriptionName"     = $subscription_name
+            "SubscriptionId"       = $subscription_id
+            "TenantId"             = $tenant_id
+            "ServicePrincipalName" = $spn_name
+            "ResourceGroupName"    = $resource_group_name
+            "Location"             = $location
+            "CustomLocationOID"    = ""
+            "ClientId"             = $spn_app_id
+            "ClientSecret"         = $spn_secret
+        }
+        "Network"        = @{
+            "NetworkPlugin"    = "calico"
+            "InternetDisabled" = $false
+            "Proxy"            = @{
+                "Http"  = $null
+                "Https" = $null
+                "No"    = $null # Auto populate: https://github.com/Azure/AKS-Edge/blob/1.0.266.0/tools/modules/AksEdgeDeploy/AksEdge-Arc.ps1#L870
+            }
+        }
+        "User"           = @{
+            "AcceptEula"              = $true
+            "AcceptOptionalTelemetry" = $true
+        }
+        "Machines"       = @(
+            @{
+                "LinuxNode" = @{
+                    "CpuCount"     = 4
+                    "MemoryInMB"   = 4096
+                    "DataSizeInGB" = 120
+                }
+            }
+        )
+    }
 }
 
-$aksEdge = cat $aksEdgeJson | ConvertFrom-Json
-$aksEdge.Init.ServiceIPRangeSize = 10
-$aksEdge.Network.Proxy.Http = $proxy
-$aksEdge.Network.Proxy.Https = $proxy
-$aksEdge | ConvertTo-Json -Depth 5  > $aksEdgeJson
+$aksEdgeConfig.AksEdgeConfig | ConvertTo-Json -Depth 5 > $aksEdgeJson
+$aksEdgeConfig.AksEdgeConfig = $null
+# $aksEdge = cat $aksEdgeJson | ConvertFrom-Json
+# $aksEdge.Init.ServiceIPRangeSize = 10
+# $aksEdge.Network.Proxy.Http = $proxy
+# $aksEdge.Network.Proxy.Https = $proxy
+# $aksEdge | ConvertTo-Json -Depth 5  > $aksEdgeJson
 
 $aksEdgeConfig
-$aksEdgeConfig > $aideJson
+$aksEdgeConfig | ConvertTo-Json -Depth 5 > $aideJson
 $aideJson
 cat $aideJson
 cat $aksEdgeJson
 
+Set-AideUserConfig -jsonFile $aideJson
+(Get-AideUserConfig).AksEdgeConfig.Network
+
+Test-AideUserConfig
+
+Start-AideWorkflow
 Start-AideWorkflow -jsonFile $aideJson
 
 # Test "AKSEdge" module
@@ -113,21 +188,30 @@ Get-Command -Module AKSEdge | Format-Table Name, Version
 
 kubectl get nodes
 
-Get-AideUserConfig
-Test-AideUserConfig
+# If using Azure VM, then current check prevents installing of agent automatically
+# Azure VM->
+Invoke-WebRequest -UseBasicParsing -Uri "https://aka.ms/azcmagent-windows" -TimeoutSec 30 -OutFile "$env:TEMP\install_windows_azcmagent.ps1"
+& "$env:TEMP\install_windows_azcmagent.ps1"
+# <-Azure VM
 
 # Installs Azure CLI
 Initialize-AideArc
 
-# If using Azure VM, then current check prevents installing of agent automatically
-# Azure VM->
-Invoke-WebRequest -UseBasicParsing -Uri "https://aka.ms/azcmagent-windows" -TimeoutSec 30 -OutFile "$env:TEMP\install_windows_azcmagent.ps1";
-& "$env:TEMP\install_windows_azcmagent.ps1";
-# <-Azure VM
+# Write-Output "[logging]" >> %USERPROFILE%\.azure\config
+# Write-Output "enable_log_file = yes" >> %USERPROFILE%\.azure\config
+# Write-Output "log_dir = c:\code\az.log" >> %USERPROFILE%\.azure\config
+# cat %USERPROFILE%\.azure\config
 
 Connect-AideArc
+# Connect Arc-enabled kubernetes
+Connect-AksEdgeArc -JsonConfigFilePath .\aksedge-config.json
+
+# Individual Arc connections
+Connect-AideArcKubernetes
 
 Get-AksEdgeManagedServiceToken
+
+Invoke-AksEdgeNodeCommand -NodeType Linux -command "sudo ls /var/lib/rancher/k3s/storage"
 
 # Test GitOps deployed apps
 kubectl get deploy -n demos
