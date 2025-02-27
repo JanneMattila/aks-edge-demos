@@ -82,7 +82,7 @@ $cluster_name = "aksee"
 $product = "AKS Edge Essentials - K8s"
 
 $aksEdgeConfig = @{
-    "SchemaVersion"     = "1.1"
+    "SchemaVersion"     = "1.3"
     "Version"           = "1.0"
     "AksEdgeProduct"    = $product
     "AksEdgeProductUrl" = ""
@@ -95,7 +95,7 @@ $aksEdgeConfig = @{
         "AdapterName" = ""
     }
     "Azure"             = @{
-        "ClusterName"          = $cluster_name
+        "ConnectedMachineName" = $cluster_name
         "SubscriptionName"     = $subscription_name
         "SubscriptionId"       = $subscription_id
         "TenantId"             = $tenant_id
@@ -118,7 +118,7 @@ $aksEdgeConfig = @{
     }
     "AksEdgeConfigFile" =  "aksedge-config.json"
     "AksEdgeConfig"     = @{
-        "SchemaVersion"  = "1.8"
+        "SchemaVersion"  = "1.14"
         "Version"        = "1.0"
         "DeploymentType" = "SingleMachineCluster"
         "Init"           = @{
@@ -132,7 +132,6 @@ $aksEdgeConfig = @{
             "ServicePrincipalName" = $spn_name
             "ResourceGroupName"    = $resource_group_name
             "Location"             = $location
-            "CustomLocationOID"    = ""
             "ClientId"             = $spn_app_id
             "ClientSecret"         = $spn_secret
         }
@@ -153,8 +152,9 @@ $aksEdgeConfig = @{
             @{
                 "LinuxNode" = @{
                     "CpuCount"     = 4
-                    "MemoryInMB"   = 4096
+                    "MemoryInMB"   = 7500
                     "DataSizeInGB" = 120
+                    "LogSizeInGB"  = 4
                 }
             }
         )
